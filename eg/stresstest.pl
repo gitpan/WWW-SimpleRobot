@@ -35,7 +35,6 @@ our(
     $base_url,
 
     $t0,
-    $total_bytes,
     %cache,
 
 );
@@ -53,22 +52,23 @@ Usage: $0
 EOF
 }
 
-$total_bytes = 0;
+my $k = 1024;
+my $m = $k * $k;
 
 sub nicely( $ )
 {
     my $bits = shift;
-    if ( $bits >= 1_000_000 )
+    if ( $bits >= $m )
     {
-        return sprintf( "%0.2fM", $bits / 1_000_000 );
+        return sprintf( "%0.2f M", $bits / $m );
     }
-    if ( $bits >= 1_000 )
+    if ( $bits >= $k )
     {
-        return sprintf( "%0.2fK", $bits / 1_000 );
+        return sprintf( "%0.2f K", $bits / $k );
     }
     else
     {
-        return $bits;
+        return "$bits ";
     }
 }
 
@@ -76,10 +76,14 @@ sub log_( @ )
 {
     my $url = shift;
     my $bytes = shift;
+    my $type = shift;
 
-    $total_bytes += $bytes;
     my $dt = gettimeofday - $t0;
-    print LOG join( "\t", scalar( localtime ), $url, $bytes, $total_bytes, $dt ), "\n";
+    if ( $type =~ /^(page|image)$/ )
+    {
+        print "$type $bytes\n";
+    }
+    print LOG join( "\t", scalar( localtime ), $url, $bytes, $dt ), "\n";
 }
 
 $VERSION = '0.001';
@@ -89,7 +93,7 @@ $opt_clients = 1;
 $opt_depth = 0;
 $opt_logdir = $INSTALL_DIR;
 
-GetOptions( qw( help doc times=i depth=i clients=i ) ) 
+GetOptions( qw( help doc times=i depth=i clients=s ) ) 
     or usage
 ;
 usage if $opt_help;
@@ -107,74 +111,89 @@ my $robot = WWW::SimpleRobot->new(
     VISIT_CALLBACK  =>
     sub { 
         my ( $url, undef, $html, $links ) = @_;
-        log_ $url, length( $html );
+        log_ $url, length( $html ), 'page';
         for my $link ( @$links )
         {
             my ( $tag, %attr ) = @$link;
             next unless $tag eq 'img' and my $src = $attr{src};
             $src = URI->new_abs( $src, $url )->canonical->as_string;
+            next unless $src =~ /^$base_url/;
             next if $cache{$src}++;
             if ( my $img = get( $src ) )
             {
-                log_ $src, length( $img ); 
+                log_ $src, length( $img ), 'image';
             }
         }
     }
 );
-for my $child_no ( 1 .. $opt_clients )
+for my $clients ( split( ',', $opt_clients ) )
 {
-    my $logfile = "$INSTALL_DIR/log.$child_no";
-    if ( -e $logfile )
+    for my $child_no ( 1 .. $clients )
     {
-        die "Can't delete $logfile: $!\n" unless unlink $logfile;
-    }
-}
-pipe( FROM_CHILD, TO_PARENT ) or die "pipe: $!\n";
-for ( 1 .. $opt_times )
-{
-    $t0 = gettimeofday;
-    %cache = ();
-    for my $child_no ( 1 .. $opt_clients )
-    {
-        my $pid = fork();
-        die "Can't fork: $!\n" unless defined $pid;
-        if ( not $pid ) # child
+        my $logfile = "$INSTALL_DIR/log.$child_no";
+        if ( -e $logfile )
         {
-            close( FROM_CHILD );
-            my $logfile = "$INSTALL_DIR/log.$child_no";
-            open( LOG, ">>$logfile" )
-                or die "Can't open $logfile: $!\n"
-            ;
-            log_ "start", 0;
-            $robot->traverse( $url );
-            log_ "end", 0;
-            print TO_PARENT "$total_bytes\n";
-            exit;
-        }
-        else # parent
-        {
-            print STDERR "$pid launched\n";
+            die "Can't delete $logfile: $!\n" unless unlink $logfile;
         }
     }
-}
+    pipe( FROM_CHILD, TO_PARENT ) or die "pipe: $!\n";
+    for ( 1 .. $opt_times )
+    {
+        $t0 = gettimeofday;
+        %cache = ();
+        for my $child_no ( 1 .. $clients )
+        {
+            my $pid = fork();
+            die "Can't fork: $!\n" unless defined $pid;
+            if ( not $pid ) # child
+            {
+                select TO_PARENT;
+                $|++;
+                close( FROM_CHILD );
+                my $logfile = "$INSTALL_DIR/log.$child_no";
+                open( LOG, ">>$logfile" )
+                    or die "Can't open $logfile: $!\n"
+                ;
+                log_ "start", 0, 'info';
+                $robot->traverse( $url );
+                log_ "end", 0, 'info';
+                exit;
+            }
+            else # parent
+            {
+            }
+        }
+    }
 
-close( TO_PARENT );
-my $grand_total = 0;
-while ( my $total_bytes = <FROM_CHILD> )
-{
-    chomp( $total_bytes );
-    $grand_total += $total_bytes
-}
-print STDERR "wait ...\n";
-my $pid;
-while ( ( $pid = wait ) != -1 )
-{
-    print STDERR "$pid finished\n";
-}
+    close( TO_PARENT );
 
-my $dt = gettimeofday - $t0;
-my $bps = nicely( $grand_total * 2^8 / $dt );
-print STDERR "$grand_total bytes delivered in $dt seconds (${bps}bps)\n";
+    my $total_bytes = 0;
+    my $total_pages = 0;
+    my $total_images = 0;
+
+    while ( my $log = <FROM_CHILD> )
+    {
+        chomp( $log );
+        my ( $type, $bytes ) = split( ' ', $log );
+        $total_pages += $type eq 'page';
+        $total_images += $type eq 'image';
+        $total_bytes += $bytes;
+        print STDERR nicely( $total_bytes ), " bytes\r";
+    }
+    while ( ( my $pid = wait ) != -1 ) { }
+    my $dt = gettimeofday - $t0;
+    my $secs = sprintf( "%0.2f", $dt );
+    my $bits_per_byte = 8;
+    my $bits = $total_bytes * $bits_per_byte;
+    my $bps = $bits / $dt;
+    print STDERR 
+        "$total_pages pages and $total_images images (",
+        nicely( $total_bytes ), 
+        " bytes) delivered to $clients concurrent users in $secs seconds (",
+        nicely( $bps ),
+        "bps)\n"
+    ;
+}
 
 #------------------------------------------------------------------------------
 #
