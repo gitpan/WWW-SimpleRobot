@@ -10,3 +10,6 @@ Revision history for Perl extension WWW::SimpleRobot.
 0.03  Thu Mar 29 18:09:21 BST 2001
         - added $links argument to callback
         - added eg/stresstest.pl
+
+0.04  Mon May 14 13:36:50 BST 2001
+        - updated eg/stresstest.pl

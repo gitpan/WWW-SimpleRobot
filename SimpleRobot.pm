@@ -26,7 +26,7 @@ use HTML::LinkExtor;
 #
 #==============================================================================
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 our %OPTIONS = (
     URLS                => [],
     FOLLOW_REGEX        => '',
