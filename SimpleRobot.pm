@@ -26,7 +26,7 @@ use HTML::LinkExtor;
 #
 #==============================================================================
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 our %OPTIONS = (
     URLS                => [],
     FOLLOW_REGEX        => '',
@@ -116,12 +116,13 @@ sub traverse
         my $url = $page->{url};
         $self->_verbose( "GET $url\n" );
         my $html = get( $url ) or next;
-        $self->{VISIT_CALLBACK}( $url, $page->{depth}, $html );
-        next if defined( $self->{DEPTH} ) and $page->{depth} == $self->{DEPTH};
         $self->_verbose( "Extract links from $url\n" );
         my $linkxtor = HTML::LinkExtor->new( undef, $url );
         $linkxtor->parse( $html );
-        for my $link ( $linkxtor->links )
+        my @links = $linkxtor->links;
+        $self->{VISIT_CALLBACK}( $url, $page->{depth}, $html, \@links );
+        next if defined( $self->{DEPTH} ) and $page->{depth} == $self->{DEPTH};
+        for my $link ( @links )
         {
             my ( $tag, %attr ) = @$link;
             next unless $tag eq 'a';
@@ -196,7 +197,13 @@ pages.
         DEPTH           => 1,
         TRAVERSAL       => 'depth',
         VISIT_CALLBACK  => 
-            sub { my $url = shift; print STDERR "Visiting $url\n"; }
+            sub { 
+                my ( $url, $depth, $html, $links ) = @_;
+                print STDERR "Visiting $url\n"; 
+                print STDERR "Depth = $depth\n"; 
+                print STDERR "HTML = $html\n"; 
+                print STDERR "Links = @$links\n"; 
+            }
     );
     $robot->traverse;
     my @urls = @{$robot->urls};

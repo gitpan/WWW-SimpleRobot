@@ -6,3 +6,7 @@ Revision history for Perl extension WWW::SimpleRobot.
 
 0.02  Tue Mar 27 11:23:06 BST 2001
         - added TRAVERSAL option
+
+0.03  Thu Mar 29 18:09:21 BST 2001
+        - added $links argument to callback
+        - added eg/stresstest.pl
