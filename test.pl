@@ -6,24 +6,44 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..2\n"; }
+BEGIN { $| = 1; print "1..3\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use WWW::SimpleRobot;
 $loaded = 1;
 print "ok 1\n";
+sub callback { 
+    my $url = shift; 
+    my $depth = shift; 
+    print STDERR "Visiting $url (depth $depth)\n"; 
+}
+print STDERR "breadth first traversal ...\n";
 eval {
     my $robot = WWW::SimpleRobot->new(
         URLS            => [ 'http://www.perl.org/' ],
         FOLLOW_REGEX    => "^http://www.perl.org/",
-        DEPTH           => 1,
-        VISIT_CALLBACK  => 
-            sub { my $url = shift; print STDERR "Visiting $url\n"; }
+        DEPTH           => 2,
+        TRAVERSAL       => 'breadth',
+        VISIT_CALLBACK  => \&callback,
     );
     $robot->traverse;
     print "URLS\n====\n\n", map { "$_\n" } @{$robot->urls};
 };
 print "$@\nnot " if $@;
 print "ok 2\n";
+print STDERR "depth first traversal ...\n";
+eval {
+    my $robot = WWW::SimpleRobot->new(
+        URLS            => [ 'http://www.perl.org/' ],
+        FOLLOW_REGEX    => "^http://www.perl.org/",
+        DEPTH           => 2,
+        TRAVERSAL       => 'depth',
+        VISIT_CALLBACK  => \&callback,
+    );
+    $robot->traverse;
+    print "URLS\n====\n\n", map { "$_\n" } @{$robot->urls};
+};
+print "$@\nnot " if $@;
+print "ok 3\n";
 
 ######################### End of black magic.
 

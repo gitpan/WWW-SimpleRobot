@@ -4,3 +4,5 @@ Revision history for Perl extension WWW::SimpleRobot.
 	- original version; created by h2xs 1.20 with options
 		-A -X WWW::SimpleRobot
 
+0.02  Tue Mar 27 11:23:06 BST 2001
+        - added TRAVERSAL option

@@ -26,13 +26,14 @@ use HTML::LinkExtor;
 #
 #==============================================================================
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 our %OPTIONS = (
     URLS                => [],
     FOLLOW_REGEX        => '',
     VISIT_CALLBACK      => sub {},
     VERBOSE             => 0,
     DEPTH               => undef,
+    TRAVERSAL           => 'depth',
 );
 
 #==============================================================================
@@ -64,6 +65,10 @@ sub new
     {
         die "Unknown option $_\n" unless exists $OPTIONS{$_};
     }
+    unless ( $args{TRAVERSAL} =~ /^(depth|breadth)$/ )
+    {
+        die "option TRAVERSAL should be either 'depth' or 'breadth'\n";
+    }
 
     my $self = bless \%args, $class;
 
@@ -86,6 +91,7 @@ sub traverse
         "Creating list of files to index from @{$self->{URLS}}...\n"
     );
     my @pages;
+    my %seen;
     for my $url ( @{$self->{URLS}} )
     {
         my $uri = URI->new( $url );
@@ -96,21 +102,21 @@ sub traverse
             my ( $content_type, $document_length, $modified_time ) =
                 head( $uri )
         ;
-        push( @pages, 
-            { 
-                modified_time => $modified_time,
-                url => $uri->canonical, 
-                depth => 0,
-            }
-        );
+        $uri = $uri->canonical->as_string;
+        $seen{$uri}++;
+        my $page = { 
+            modified_time => $modified_time,
+            url => $uri,
+            depth => 0,
+        };
+        push( @pages, $page );
     }
-    my %seen;
-    for my $page ( @pages )
+    while ( my $page = shift( @pages ) )
     {
         my $url = $page->{url};
         $self->_verbose( "GET $url\n" );
         my $html = get( $url ) or next;
-        $self->{VISIT_CALLBACK}( $url, $html );
+        $self->{VISIT_CALLBACK}( $url, $page->{depth}, $html );
         next if defined( $self->{DEPTH} ) and $page->{depth} == $self->{DEPTH};
         $self->_verbose( "Extract links from $url\n" );
         my $linkxtor = HTML::LinkExtor->new( undef, $url );
@@ -130,14 +136,23 @@ sub traverse
             next if $seen{$href}++;
             my $npages = @pages;
             my $nseen = keys %seen;
-            push( @pages, 
-                { 
-                    modified_time => $modified_time, 
-                    url => $href, 
-                    depth => $page->{depth}+1,
-                }
+            my $page = { 
+                modified_time => $modified_time, 
+                url => $href,
+                depth => $page->{depth}+1,
+            };
+            splice( 
+                @pages, 
+                $self->{TRAVERSAL} eq 'depth' ? 0 : @pages, 
+                # depth first ... unshift, breadth first ... push
+                0, 
+                $page 
             );
-            $self->_verbose( "$nseen/$npages : $url : $href\n" );
+            $self->_verbose( 
+                "$nseen/$npages : $url : $href",
+                " : ", join( ' ', map { $_->{url} } @pages ),
+                "\n" 
+            );
         }
     }
     $self->{pages} = \@pages;
@@ -179,6 +194,7 @@ pages.
         URLS            => [ 'http://www.perl.org/' ],
         FOLLOW_REGEX    => "^http://www.perl.org/",
         DEPTH           => 1,
+        TRAVERSAL       => 'depth',
         VISIT_CALLBACK  => 
             sub { my $url = shift; print STDERR "Visiting $url\n"; }
     );
