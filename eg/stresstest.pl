@@ -24,7 +24,7 @@ our(
     $VERSION,
 
     $opt_logdir, 
-    $opt_clients, 
+    $opt_concurrency, 
     $opt_times, 
     $opt_depth,
     $opt_help,
@@ -43,7 +43,7 @@ sub usage()
 {
     die <<EOF;
 Usage: $0 
-    [ -clients <no. clients> ] 
+    [ -concurrency <concurrency level> ] 
     [ -times <no. times> ]
     [ -depth <depth> ] 
     [ -help ]
@@ -55,7 +55,7 @@ EOF
 my $k = 1024;
 my $m = $k * $k;
 
-sub nicely( $ )
+sub format_number( $ )
 {
     my $bits = shift;
     if ( $bits >= $m )
@@ -83,17 +83,17 @@ sub log_( @ )
     {
         print "$type $bytes\n";
     }
+    return unless $opt_logdir;
     print LOG join( "\t", scalar( localtime ), $url, $bytes, $dt ), "\n";
 }
 
-$VERSION = '0.001';
+$VERSION = '0.002';
 
 $opt_times = 1;
-$opt_clients = 1;
+$opt_concurrency = 1;
 $opt_depth = 0;
-$opt_logdir = $INSTALL_DIR;
 
-GetOptions( qw( help doc times=i depth=i clients=s ) ) 
+GetOptions( qw( help doc times=i depth=i concurrency=s log=s ) ) 
     or usage
 ;
 usage if $opt_help;
@@ -126,14 +126,17 @@ my $robot = WWW::SimpleRobot->new(
         }
     }
 );
-for my $clients ( split( ',', $opt_clients ) )
+for my $clients ( split( ',', $opt_concurrency ) )
 {
-    for my $child_no ( 1 .. $clients )
+    if ( $opt_logdir )
     {
-        my $logfile = "$INSTALL_DIR/log.$child_no";
-        if ( -e $logfile )
+        for my $child_no ( 1 .. $clients )
         {
-            die "Can't delete $logfile: $!\n" unless unlink $logfile;
+            my $logfile = "$opt_logdir/log.$child_no";
+            if ( -e $logfile )
+            {
+                die "Can't delete $logfile: $!\n" unless unlink $logfile;
+            }
         }
     }
     pipe( FROM_CHILD, TO_PARENT ) or die "pipe: $!\n";
@@ -150,10 +153,13 @@ for my $clients ( split( ',', $opt_clients ) )
                 select TO_PARENT;
                 $|++;
                 close( FROM_CHILD );
-                my $logfile = "$INSTALL_DIR/log.$child_no";
-                open( LOG, ">>$logfile" )
-                    or die "Can't open $logfile: $!\n"
-                ;
+                if ( $opt_logdir )
+                {
+                    my $logfile = "$opt_logdir/log.$child_no";
+                    open( LOG, ">>$logfile" )
+                        or die "Can't open $logfile: $!\n"
+                    ;
+                }
                 log_ "start", 0, 'info';
                 $robot->traverse( $url );
                 log_ "end", 0, 'info';
@@ -178,7 +184,7 @@ for my $clients ( split( ',', $opt_clients ) )
         $total_pages += $type eq 'page';
         $total_images += $type eq 'image';
         $total_bytes += $bytes;
-        print STDERR nicely( $total_bytes ), " bytes\r";
+        print STDERR format_number( $total_bytes ), " bytes\r";
     }
     while ( ( my $pid = wait ) != -1 ) { }
     my $dt = gettimeofday - $t0;
@@ -186,12 +192,16 @@ for my $clients ( split( ',', $opt_clients ) )
     my $bits_per_byte = 8;
     my $bits = $total_bytes * $bits_per_byte;
     my $bps = $bits / $dt;
+    my $tot_requests = $total_pages + $total_images;
     print STDERR 
-        "$total_pages pages and $total_images images (",
-        nicely( $total_bytes ), 
-        " bytes) delivered to $clients concurrent users in $secs seconds (",
-        nicely( $bps ),
-        "bps)\n"
+        "Cuncurrency: $opt_concurrency\n",
+        "Total requests: $tot_requests ($total_pages pages, $total_images images)\n",
+        "Total bytes: ", format_number( $total_bytes ), "bytes\n",
+        "Total time: $secs\n",
+        "Average transer rate: ", format_number( $bps ), "bps\n",
+    ;
+    printf STDERR
+        "Average request/sec: %0.2f\n", ( $tot_requests / $secs )
     ;
 }
 
@@ -208,9 +218,10 @@ stresstest.pl
 =head1 SYNOPSIS
 
 Usage: ./stresstest.pl
-    [ -clients <no. clients> ]
+    [ -concurrency <concurrency level> ]
     [ -times <no. times> ]
     [ -depth <depth> ]
+    [ -logdir <log dir> ]
     <base url>
 
 =head1 DESCRIPTION

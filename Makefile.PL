@@ -3,7 +3,7 @@ use ExtUtils::MakeMaker;
 # the contents of the Makefile that is written.
 WriteMakefile(
     'NAME'		=> 'WWW::SimpleRobot',
-    'EXE_FILES'         => [ 'eg/stresstest.pl' ],
+    'EXE_FILES'         => [ 'eg/stresstest.pl', 'eg/blinks.pl' ],
     'VERSION_FROM'	=> 'SimpleRobot.pm', # finds $VERSION
     'PREREQ_PM'		=> {
         URI             => undef,

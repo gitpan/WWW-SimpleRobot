@@ -16,3 +16,6 @@ Revision history for Perl extension WWW::SimpleRobot.
 
 0.05  Mon May 14 13:36:50 BST 2001
         - updated eg/stresstest.pl again
+
+0.06  Wed Jun  6 10:29:55 BST 2001
+        - updated eg/stresstest.pl again again

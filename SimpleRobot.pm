@@ -26,11 +26,12 @@ use HTML::LinkExtor;
 #
 #==============================================================================
 
-our $VERSION = '0.05';
+our $VERSION = '0.07';
 our %OPTIONS = (
     URLS                => [],
     FOLLOW_REGEX        => '',
     VISIT_CALLBACK      => sub {},
+    BROKEN_LINK_CALLBACK=> sub {},
     VERBOSE             => 0,
     DEPTH               => undef,
     TRAVERSAL           => 'depth',
@@ -108,6 +109,7 @@ sub traverse
             modified_time => $modified_time,
             url => $uri,
             depth => 0,
+            linked_from => $url,
         };
         push( @pages, $page );
     }
@@ -115,7 +117,11 @@ sub traverse
     {
         my $url = $page->{url};
         $self->_verbose( "GET $url\n" );
-        my $html = get( $url ) or next;
+        my $html = get( $url );
+        unless( $html )
+        {
+            $self->{BROKEN_LINK_CALLBACK}( $url, $page->{linked_from}, $page->{depth} );
+        }
         $self->_verbose( "Extract links from $url\n" );
         my $linkxtor = HTML::LinkExtor->new( undef, $url );
         $linkxtor->parse( $html );
@@ -203,6 +209,13 @@ pages.
                 print STDERR "Depth = $depth\n"; 
                 print STDERR "HTML = $html\n"; 
                 print STDERR "Links = @$links\n"; 
+            }
+        ,
+        BROKEN_LINK_CALLBACK  => 
+            sub { 
+                my ( $url, $linked_from, $depth ) = @_;
+                print STDERR "$url looks like a broken link on $linked_from\n"; 
+                print STDERR "Depth = $depth\n"; 
             }
     );
     $robot->traverse;
