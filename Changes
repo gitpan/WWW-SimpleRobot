@@ -1,0 +1,6 @@
+Revision history for Perl extension WWW::SimpleRobot.
+
+0.01  Mon Mar 19 09:59:21 2001
+	- original version; created by h2xs 1.20 with options
+		-A -X WWW::SimpleRobot
+
